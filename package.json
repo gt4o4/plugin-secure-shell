@@ -1,16 +1,23 @@
 {
-  "name": "plugin-sample",
-  "version": "0.4.6",
-  "description": "This is a sample plugin for Siyuan (https://b3log.org/siyuan)",
+  "name": "plugin-secure-shell",
+  "version": "0.1.0",
+  "description": "SSH terminal emulator plugin for SiYuan",
   "main": ".src/index.js",
   "scripts": {
     "lint": "eslint . --fix --cache",
     "dev": "webpack --mode development",
     "build": "webpack --mode production"
   },
-  "keywords": [],
-  "author": "Vanessa",
+  "keywords": ["ssh", "terminal", "secure shell"],
+  "author": "wenri",
   "license": "MIT",
+  "dependencies": {
+    "@xterm/xterm": "^5.5.0",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-web-links": "^0.11.0",
+    "@xterm/addon-search": "^0.15.0",
+    "@xterm/addon-webgl": "^0.18.0"
+  },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",
     "@eslint/js": "^9.39.1",

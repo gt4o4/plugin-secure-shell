@@ -72,7 +72,7 @@ module.exports = (env, argv) => {
             ],
         },
         resolve: {
-            extensions: [".ts", ".scss", ".js", ".json"],
+            extensions: [".ts", ".scss", ".css", ".js", ".json"],
         },
         module: {
             rules: [
@@ -94,10 +94,19 @@ module.exports = (env, argv) => {
                     use: [
                         MiniCssExtractPlugin.loader,
                         {
-                            loader: "css-loader", // translates CSS into CommonJS
+                            loader: "css-loader",
                         },
                         {
-                            loader: "sass-loader", // compiles Sass to CSS
+                            loader: "sass-loader",
+                        },
+                    ],
+                },
+                {
+                    test: /\.css$/,
+                    use: [
+                        MiniCssExtractPlugin.loader,
+                        {
+                            loader: "css-loader",
                         },
                     ],
                 }
