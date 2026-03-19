@@ -1,3 +1,4 @@
 [submodule "vendor/libapps"]
 	path = vendor/libapps
-	url = https://chromium.googlesource.com/apps/libapps
+	url = https://github.com/gt4o4/libapps-mirror.git
+	branch = siyuan-plugin
