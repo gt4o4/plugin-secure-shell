@@ -13,19 +13,30 @@ No test framework is configured.
 
 ## Architecture
 
-This is a **SiYuan plugin** built on the [SiYuan](https://b3log.org/siyuan) plugin SDK. The plugin extends the `Plugin` base class from the `siyuan` npm package.
+This is a **SiYuan plugin** providing native SSH terminal functionality via WASM OpenSSH. It reuses Chrome Secure Shell's upstream modules (hterm, wassh, wasi-js-bindings) from `vendor/libapps/` as a git submodule, with zero modifications to vendor code (except one upstream bugfix in wassh/js/vfs.js).
 
-**Entry point:** `src/index.ts` — single file containing the plugin class with lifecycle methods (`onload`, `onLayoutReady`, `onunload`, `uninstall`).
+**Entry point:** `src/index.ts` — plugin class with lifecycle methods, dialogs, settings panel.
 
-**Build:** Webpack bundles TypeScript (via esbuild-loader) to CommonJS2. The `siyuan` package is marked as external. SCSS is compiled via sass-loader + MiniCssExtractPlugin. Production builds copy static assets (i18n, plugin.json, icons, READMEs) into `dist/` and package everything into `package.zip`.
+**Terminal stack:**
+- `src/terminal-session.ts` — creates hterm terminal, wires SshOrchestrator, handles reconnect
+- `src/wasm/ssh-orchestrator.ts` — thin glue: creates NodeSyscallHandler + wassh Process.Background
+- `src/wasm/node-syscall-handler.ts` — extends wassh's RemoteReceiverWasiPreview1, overrides init() (Node.js fs instead of IndexedDB) and handle_sock_create() (NodeTcpSocket instead of Chrome sockets)
+- `src/wasm/node-socket.ts` — NodeTcpSocket extends wassh StreamSocket using Node.js `net` module
+- `src/wasm/node-vfs.ts` — NodeFsDirectoryHandler extends wassh DirectoryHandler using Node.js `fs` module
 
-**i18n:** Language files live in `src/i18n/` (e.g., `en_US.json`, `zh_CN.json`). Access translations in code via `this.i18n.key`. Plugins should support at least English and Simplified Chinese.
+**Build:** Webpack multi-config array:
+1. **Worker bundle** (ESM) — bundles `vendor/libapps/wassh/js/worker.js` into `wassh-worker.js` for Web Worker
+2. **Main bundle** (CommonJS2) — bundles plugin code + hterm + wassh syscall handler; `siyuan` is external
 
-**Plugin metadata:** `plugin.json` at the repo root defines name, version, `minAppVersion`, supported backends/frontends, display names, and descriptions. Note: `displayName` and `description` fields are plain text (not HTML/Markdown).
+Resolve aliases redirect hterm/libdot resource imports to bundler-compatible shims in `src/shims/`. Asset loaders handle .ogg/.svg/.png/.html from vendor.
+
+**i18n:** Language files in `src/i18n/` (en_US.json, zh_CN.json). Access via `this.i18n.key`.
+
+**Plugin metadata:** `plugin.json` — name, version, supported backends/frontends (desktop only).
 
 ## Key Constraints
 
-- **File I/O must use the SiYuan kernel API** (`/api/file/*`). Do not use Node.js `fs` or Electron APIs — this causes data loss during sync and damages cloud data.
-- **Daily notes** created manually (not via `/api/filetree/createDailyNote`) must have `custom-dailynote-yyyymmdd` attribute added to the document.
+- **File I/O must use the SiYuan kernel API** (`/api/file/*`). Do not use Node.js `fs` or Electron APIs for SiYuan data — this causes data loss during sync. Exception: the SSH VFS (`node-vfs.ts`) uses Node.js `fs` for `~/.ssh/` files which are outside SiYuan's data directory.
+- **Vendor code (`vendor/libapps/`)** should not be modified. Use resolve aliases, subclassing, or shims to adapt upstream code. The ESLint config ignores the `vendor` directory.
 - **Frontend APIs:** https://github.com/siyuan-note/petal
 - **Backend APIs:** https://github.com/siyuan-note/siyuan/blob/master/API.md

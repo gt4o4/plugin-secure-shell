@@ -7,7 +7,6 @@ import {
     getFrontend,
     Setting,
 } from "siyuan";
-import "@xterm/xterm/css/xterm.css";
 import "./index.scss";
 import {TerminalSession} from "./terminal-session";
 import {
@@ -24,30 +23,33 @@ const ICON_TERMINAL = "<symbol id=\"iconTerminal\" viewBox=\"0 0 1024 1024\"><pa
 
 export default class SecureShellPlugin extends Plugin {
 
-    private isMobile: boolean;
     private sessions: Map<string, TerminalSession> = new Map();
     private profiles: ConnectionProfile[] = [];
     private settings: PluginSettings = {...DEFAULT_SETTINGS};
 
     async onload() {
         const frontEnd = getFrontend();
-        this.isMobile = frontEnd === "mobile" || frontEnd === "browser-mobile";
+        const isDesktop = frontEnd === "desktop" || frontEnd === "desktop-window";
 
         this.addIcons(ICON_TERMINAL);
 
         this.addTab({
             type: TAB_TYPE,
             init() {
+                if (!isDesktop) {
+                    this.element.innerHTML = `<div class="secure-shell__terminal-container" style="display:flex;align-items:center;justify-content:center;color:#999;">${(this as any).i18n?.desktopOnly || "SSH terminal requires the SiYuan desktop app"}</div>`;
+                    return;
+                }
+
                 const container = document.createElement("div");
                 container.className = "secure-shell__terminal-container";
                 this.element.appendChild(container);
 
-                const data = this.data as {profile: ConnectionProfile; settings: PluginSettings; password?: string};
-                const session = new TerminalSession(container, data.profile, data.settings);
+                const data = this.data as {profile: ConnectionProfile; settings: PluginSettings; pluginDir: string};
+                const session = new TerminalSession(container, data.profile, data.settings, data.pluginDir);
                 session.init();
-                session.connect(data.password);
+                session.connect();
 
-                // Store session reference on the element for cleanup
                 (this.element as any).__sshSession = session;
             },
             beforeDestroy() {
@@ -128,72 +130,21 @@ export default class SecureShellPlugin extends Plugin {
                 menu.addItem({
                     label: profile.name || `${profile.username}@${profile.host}`,
                     click: () => {
-                        this.quickConnect(profile);
+                        this.openTerminalTab(profile);
                     },
                 });
             }
         }
 
-        if (this.isMobile) {
-            menu.fullscreen();
-        } else {
-            menu.open({
-                x: event.clientX,
-                y: event.clientY,
-                isLeft: true,
-            });
-        }
-    }
-
-    private quickConnect(profile: ConnectionProfile) {
-        if (profile.authType === "password") {
-            this.showPasswordPrompt(profile);
-        } else {
-            this.openTerminalTab(profile);
-        }
-    }
-
-    private showPasswordPrompt(profile: ConnectionProfile) {
-        const dialog = new Dialog({
-            title: `${this.i18n.password} - ${profile.name || profile.host}`,
-            content: `<div class="b3-dialog__content">
-                <div class="b3-label">
-                    <span>${this.i18n.password}</span>
-                    <input type="password" class="b3-text-field fn__block secure-shell__password-input" placeholder="${this.i18n.password}">
-                </div>
-            </div>
-            <div class="b3-dialog__action">
-                <button class="b3-button b3-button--cancel">${this.i18n.cancel}</button>
-                <button class="b3-button b3-button--text">${this.i18n.connect}</button>
-            </div>`,
-            width: this.isMobile ? "92vw" : "400px",
+        menu.open({
+            x: event.clientX,
+            y: event.clientY,
+            isLeft: true,
         });
-
-        const btns = dialog.element.querySelectorAll(".b3-button");
-        const passwordInput = dialog.element.querySelector(".secure-shell__password-input") as HTMLInputElement;
-
-        passwordInput.addEventListener("keydown", (e) => {
-            if (e.key === "Enter") {
-                e.preventDefault();
-                const password = passwordInput.value;
-                dialog.destroy();
-                this.openTerminalTab(profile, password);
-            }
-        });
-
-        btns[0].addEventListener("click", () => {
-            dialog.destroy();
-        });
-        btns[1].addEventListener("click", () => {
-            const password = passwordInput.value;
-            dialog.destroy();
-            this.openTerminalTab(profile, password);
-        });
-
-        setTimeout(() => passwordInput.focus(), 100);
     }
 
     private showConnectDialog() {
+        const defaultIdentity = this.settings.defaultIdentityFile || "";
         const dialog = new Dialog({
             title: this.i18n.newConnection,
             content: `<div class="b3-dialog__content secure-shell__connect-form">
@@ -214,21 +165,19 @@ export default class SecureShellPlugin extends Plugin {
                     <input type="text" class="b3-text-field fn__block" data-field="username" placeholder="root">
                 </div>
                 <div class="b3-label">
-                    <span>${this.i18n.authType}</span>
-                    <select class="b3-select fn__block" data-field="authType">
-                        <option value="password">${this.i18n.password}</option>
-                        <option value="keyboard-interactive">Keyboard Interactive</option>
-                        <option value="none">${this.i18n.authNone}</option>
-                    </select>
+                    <span>${this.i18n.identityFile}</span>
+                    <input type="text" class="b3-text-field fn__block" data-field="identityFile" placeholder="~/.ssh/id_rsa" value="${this.escapeAttr(defaultIdentity)}">
+                    <div class="b3-label__text">${this.i18n.identityFileHint}</div>
                 </div>
                 <div class="b3-label">
-                    <span>${this.i18n.password}</span>
-                    <input type="password" class="b3-text-field fn__block" data-field="password" placeholder="${this.i18n.password}">
+                    <span>${this.i18n.extraArgs}</span>
+                    <input type="text" class="b3-text-field fn__block" data-field="extraArgs" placeholder="-v">
+                    <div class="b3-label__text">${this.i18n.extraArgsHint}</div>
                 </div>
                 <div class="b3-label">
-                    <span>${this.i18n.proxyUrl}</span>
-                    <input type="text" class="b3-text-field fn__block" data-field="proxyUrl" placeholder="wss://proxy.example.com/ssh?host={host}&port={port}&username={username}" value="${this.escapeAttr(this.settings.defaultProxyUrl)}">
-                    <div class="b3-label__text">${this.i18n.proxyUrlHint}</div>
+                    <span>${this.i18n.portForwards}</span>
+                    <textarea class="b3-text-field fn__block" data-field="portForwards" rows="2" placeholder="-L 8080:localhost:80"></textarea>
+                    <div class="b3-label__text">${this.i18n.portForwardsHint}</div>
                 </div>
                 <div class="b3-label">
                     <label class="fn__flex">
@@ -242,14 +191,14 @@ export default class SecureShellPlugin extends Plugin {
                 <button class="b3-button b3-button--cancel">${this.i18n.cancel}</button>
                 <button class="b3-button b3-button--text">${this.i18n.connect}</button>
             </div>`,
-            width: this.isMobile ? "92vw" : "520px",
+            width: "520px",
         });
 
         const btns = dialog.element.querySelectorAll(".b3-button");
         btns[0].addEventListener("click", () => dialog.destroy());
         btns[1].addEventListener("click", () => {
             const getValue = (field: string) => {
-                const el = dialog.element.querySelector(`[data-field="${field}"]`) as HTMLInputElement | HTMLSelectElement;
+                const el = dialog.element.querySelector(`[data-field="${field}"]`) as HTMLInputElement | HTMLTextAreaElement;
                 return el?.value ?? "";
             };
             const getChecked = (field: string) => {
@@ -257,19 +206,23 @@ export default class SecureShellPlugin extends Plugin {
                 return el?.checked ?? false;
             };
 
+            const portForwardsRaw = getValue("portForwards").trim();
+            const portForwards = portForwardsRaw
+                ? portForwardsRaw.split("\n").map((l) => l.trim()).filter(Boolean)
+                : undefined;
+
             const profile: ConnectionProfile = {
                 id: generateId(),
                 name: getValue("name"),
                 host: getValue("host"),
                 port: parseInt(getValue("port")) || 22,
                 username: getValue("username"),
-                authType: getValue("authType") as ConnectionProfile["authType"],
-                proxyUrl: getValue("proxyUrl"),
+                identityFile: getValue("identityFile") || undefined,
+                extraArgs: getValue("extraArgs") || undefined,
+                portForwards,
                 createdAt: Date.now(),
                 lastUsedAt: Date.now(),
             };
-
-            const password = getValue("password");
 
             if (!profile.host) {
                 showMessage(this.i18n.hostRequired);
@@ -282,7 +235,7 @@ export default class SecureShellPlugin extends Plugin {
             }
 
             dialog.destroy();
-            this.openTerminalTab(profile, password);
+            this.openTerminalTab(profile);
         });
     }
 
@@ -311,7 +264,7 @@ export default class SecureShellPlugin extends Plugin {
             content: buildList() + `<div class="b3-dialog__action">
                 <button class="b3-button b3-button--cancel">${this.i18n.close}</button>
             </div>`,
-            width: this.isMobile ? "92vw" : "520px",
+            width: "520px",
         });
 
         dialog.element.addEventListener("click", (e) => {
@@ -325,11 +278,10 @@ export default class SecureShellPlugin extends Plugin {
 
             if (action === "connect") {
                 dialog.destroy();
-                this.quickConnect(profile);
+                this.openTerminalTab(profile);
             } else if (action === "delete") {
                 this.profiles.splice(index, 1);
                 this.saveProfiles();
-                // Refresh dialog content
                 const content = dialog.element.querySelector(".b3-dialog__content");
                 if (content) {
                     content.outerHTML = buildList();
@@ -341,7 +293,7 @@ export default class SecureShellPlugin extends Plugin {
         closeBtn?.addEventListener("click", () => dialog.destroy());
     }
 
-    private openTerminalTab(profile: ConnectionProfile, password?: string) {
+    private openTerminalTab(profile: ConnectionProfile) {
         profile.lastUsedAt = Date.now();
         const existingIdx = this.profiles.findIndex((p) => p.id === profile.id);
         if (existingIdx >= 0) {
@@ -349,12 +301,16 @@ export default class SecureShellPlugin extends Plugin {
             this.saveProfiles();
         }
 
+        // Resolve plugin directory for WASM binary lookup
+        // SiYuan plugins are located at: data/plugins/<plugin-name>/
+        const pluginDir = `/plugins/${this.name}`;
+
         openTab({
             app: this.app,
             custom: {
                 icon: "iconTerminal",
                 title: profile.name || `${profile.username}@${profile.host}`,
-                data: {profile, settings: this.settings, password},
+                data: {profile, settings: this.settings, pluginDir},
                 id: this.name + TAB_TYPE,
             },
         });
@@ -364,16 +320,16 @@ export default class SecureShellPlugin extends Plugin {
         if (!this.setting) return;
 
         this.setting.addItem({
-            title: this.i18n.settingsDefaultProxy,
-            description: this.i18n.settingsDefaultProxyDesc,
+            title: this.i18n.settingsIdentityFile,
+            description: this.i18n.settingsIdentityFileDesc,
             createActionElement: () => {
                 const input = document.createElement("input");
                 input.className = "b3-text-field fn__block";
                 input.type = "text";
-                input.value = this.settings.defaultProxyUrl;
-                input.placeholder = "wss://proxy.example.com/ssh?host={host}&port={port}&username={username}";
+                input.value = this.settings.defaultIdentityFile;
+                input.placeholder = "~/.ssh/id_rsa";
                 input.addEventListener("input", () => {
-                    this.settings.defaultProxyUrl = input.value;
+                    this.settings.defaultIdentityFile = input.value;
                 });
                 return input;
             },

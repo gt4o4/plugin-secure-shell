@@ -13,9 +13,7 @@
   ],
   "frontends": [
     "desktop",
-    "browser-desktop",
-    "desktop-window",
-    "all"
+    "desktop-window"
   ],
   "disabledInPublish": false,
   "displayName": {
@@ -23,8 +21,8 @@
     "zh_CN": "安全终端"
   },
   "description": {
-    "default": "SSH terminal emulator with connection management",
-    "zh_CN": "SSH 终端模拟器，支持连接管理"
+    "default": "Native SSH terminal powered by WASM OpenSSH",
+    "zh_CN": "基于 WASM OpenSSH 的原生 SSH 终端"
   },
   "readme": {
     "default": "README.md",
